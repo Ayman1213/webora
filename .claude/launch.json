@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "webora-site",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["dev-server.js"],
+      "port": 4180
+    },
+    {
       "name": "tiktok-teaser",
       "runtimeExecutable": "node",
       "runtimeArgs": ["tiktok-teaser/server.js"],
