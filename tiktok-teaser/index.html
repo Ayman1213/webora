@@ -269,39 +269,120 @@ function loop(now) {
 }
 requestAnimationFrame(loop);
 
+// Synthesized soundtrack, scheduled on the audio clock so it lines up with the scenes (a0 = video t=0)
+function buildAudio(ac, out, a0) {
+  const master = ac.createGain(); master.gain.value = 0.9;
+  const comp = ac.createDynamicsCompressor();
+  master.connect(comp); comp.connect(out);
+
+  const env = (g, at, dur, peak, attack = 0.01) => {
+    g.gain.setValueAtTime(0.0001, a0 + at);
+    g.gain.exponentialRampToValueAtTime(peak, a0 + at + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, a0 + at + dur);
+  };
+  const tone = (freq, at, dur, peak, type = 'sine', sweepTo) => {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, a0 + at);
+    if (sweepTo) o.frequency.exponentialRampToValueAtTime(sweepTo, a0 + at + dur);
+    env(g, at, dur, peak);
+    o.connect(g); g.connect(master); o.start(a0 + at); o.stop(a0 + at + dur + 0.05);
+  };
+  const noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+  const nd = noiseBuf.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  // filtered noise; rising=true swells up to the end (riser), otherwise it is a short burst
+  const noise = (at, dur, peak, f0, f1, rising = false, type = 'bandpass') => {
+    const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+    s.buffer = noiseBuf; s.loop = true; f.type = type; f.Q.value = 1.2;
+    f.frequency.setValueAtTime(f0, a0 + at); f.frequency.exponentialRampToValueAtTime(f1, a0 + at + dur);
+    if (rising) {
+      g.gain.setValueAtTime(0.0001, a0 + at);
+      g.gain.exponentialRampToValueAtTime(peak, a0 + at + dur * 0.95);
+      g.gain.exponentialRampToValueAtTime(0.0001, a0 + at + dur);
+    } else env(g, at, dur, peak);
+    s.connect(f); f.connect(g); g.connect(master); s.start(a0 + at); s.stop(a0 + at + dur + 0.05);
+  };
+  const kick = (at, peak = 0.9) => tone(140, at, 0.28, peak, 'sine', 40);
+  const impact = at => { tone(110, at, 1.2, 1.0, 'sine', 30); noise(at, 0.6, 0.5, 3000, 200, false, 'lowpass'); };
+  const pluck = (freq, at, peak = 0.22) => { tone(freq, at, 0.45, peak, 'triangle'); tone(freq * 2, at, 0.25, peak * 0.4, 'sine'); };
+
+  // 1 — tension: low drone, heartbeat, typing clicks, error buzz
+  const drone = ac.createOscillator(), dg = ac.createGain(), df = ac.createBiquadFilter();
+  drone.type = 'sawtooth'; drone.frequency.value = 55; df.type = 'lowpass'; df.frequency.value = 220;
+  dg.gain.setValueAtTime(0.0001, a0); dg.gain.exponentialRampToValueAtTime(0.22, a0 + 1.5);
+  dg.gain.setValueAtTime(0.22, a0 + 5.4); dg.gain.exponentialRampToValueAtTime(0.0001, a0 + 5.9);
+  drone.connect(df); df.connect(dg); dg.connect(master); drone.start(a0); drone.stop(a0 + 6);
+  for (const t of [0.1, 1.1, 2.1]) { kick(t, 0.6); kick(t + 0.22, 0.35); }
+  for (let i = 0; i < 9; i++) noise(0.6 + i * 0.111, 0.04, 0.25, 3500, 2500);
+  tone(196, 1.9, 0.18, 0.3, 'square'); tone(147, 2.1, 0.32, 0.3, 'square');
+
+  // 2 — riser into the hit
+  noise(2.5, 0.7, 0.45, 400, 6000, true);
+  impact(3.2); kick(3.5, 0.8); kick(4.2, 0.7);
+
+  // 3 — uplifting build: beat + one pluck per website block, then a success chime
+  noise(5.5, 0.35, 0.35, 500, 5000, true);
+  for (let t = 5.8; t < 12.4; t += 0.5) kick(t, t < 9.8 ? 0.55 : 0.4);
+  for (let t = 6.05; t < 9.8; t += 0.5) noise(t, 0.05, 0.12, 8000, 7000);
+  [[6.9, 261.63], [7.25, 329.63], [7.6, 392.0], [7.95, 440.0], [8.25, 523.25], [8.5, 659.25]].forEach(([t, f]) => pluck(f, t));
+  tone(783.99, 8.8, 0.5, 0.25, 'sine'); tone(1046.5, 8.92, 0.8, 0.25, 'sine');
+
+  // 4 — brand reveal: riser, hit, warm major chord, CTA ping
+  noise(9.2, 0.7, 0.45, 400, 7000, true);
+  impact(9.9);
+  for (const f of [130.81, 261.63, 329.63, 392.0, 523.25]) {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'triangle'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, a0 + 9.9); g.gain.exponentialRampToValueAtTime(0.11, a0 + 10.3);
+    g.gain.setValueAtTime(0.11, a0 + 12.2); g.gain.exponentialRampToValueAtTime(0.0001, a0 + 12.95);
+    o.connect(g); g.connect(master); o.start(a0 + 9.9); o.stop(a0 + 13);
+  }
+  tone(1318.5, 10.9, 0.4, 0.2, 'sine'); tone(1568, 11.0, 0.6, 0.2, 'sine');
+  return comp;
+}
+
 const statusEl = document.getElementById('status');
 const recBtn = document.getElementById('rec');
 window.recordResult = null;
 
 async function record() {
   recBtn.disabled = true; paused = true; window.recordResult = null;
-  const mime = ['video/mp4;codecs=avc1.640028', 'video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm']
+  const mime = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm']
     .find(m => MediaRecorder.isTypeSupported(m));
   const ext = mime.startsWith('video/mp4') ? 'mp4' : 'webm';
   // captureStream(0) + requestFrame() pushes every rendered frame instead of sampling on a timer
-  const stream = canvas.captureStream(0);
-  const track = stream.getVideoTracks()[0];
-  const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 10e6 });
+  const track = canvas.captureStream(0).getVideoTracks()[0];
+  const ac = new AudioContext();
+  await Promise.race([ac.resume(), new Promise(r => setTimeout(r, 1500))]);
+  const audioOut = ac.createMediaStreamDestination();
+  const stream = new MediaStream([track, ...audioOut.stream.getAudioTracks()]);
+  const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 10e6, audioBitsPerSecond: 192e3 });
   const chunks = [];
   rec.ondataavailable = e => e.data.size && chunks.push(e.data);
   const done = new Promise(r => rec.onstop = r);
   render(0); rec.start(); track.requestFrame();
-  const start = performance.now(); let frames = 0;
+  const LEAD = 0.1; // audio is scheduled slightly ahead so both clocks start together
+  const meter = ac.createAnalyser(), meterBuf = new Float32Array(meter.fftSize);
+  buildAudio(ac, audioOut, ac.currentTime + LEAD).connect(meter);
+  const start = performance.now() + LEAD * 1000; let frames = 0, audioPeak = 0;
   await new Promise(resolve => {
     // ticks come from a worker so recording keeps its pace even when the tab is in the background
     const ticker = new Worker(URL.createObjectURL(new Blob([`setInterval(() => postMessage(0), ${1000 / FPS})`])));
     ticker.onmessage = () => {
-      const t = (performance.now() - start) / 1000;
+      const t = Math.max(0, (performance.now() - start) / 1000);
       if (t >= DUR) { ticker.terminate(); return resolve(); }
       render(t); track.requestFrame(); frames++;
+      meter.getFloatTimeDomainData(meterBuf);
+      for (const v of meterBuf) audioPeak = Math.max(audioPeak, Math.abs(v));
       statusEl.textContent = `جارٍ التسجيل… ${t.toFixed(1)} / ${DUR} ث`;
     };
   });
-  rec.stop(); await done;
+  const audioState = ac.state;
+  rec.stop(); await done; ac.close();
   const blob = new Blob(chunks, { type: mime });
   const res = await fetch('/save?ext=' + ext, { method: 'POST', body: blob });
   const saved = await res.json();
-  window.recordResult = { mime, ext, bytes: blob.size, frames, saved };
+  window.recordResult = { mime, ext, bytes: blob.size, frames, saved, audioState, audioPeak };
   statusEl.textContent = `تم الحفظ: ${saved.file}`;
   recBtn.disabled = false; paused = false; t0 = performance.now();
   return window.recordResult;
