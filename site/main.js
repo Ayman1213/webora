@@ -1,6 +1,6 @@
 // WhatsApp number in international format without "+" or spaces, e.g. "9665XXXXXXXX".
 // While empty, the WhatsApp button stays hidden.
-const WHATSAPP_NUMBER = '';
+const WHATSAPP_NUMBER = '966533985587';
 const WHATSAPP_MESSAGE = 'مرحبًا Webora، أريد موقعًا لمشروعي.';
 
 document.documentElement.classList.add('js');
